@@ -8,20 +8,22 @@
 #include <limits>
 #include <typeinfo>
 
-#define x2 ((x)*(x))
-#define x3 ((x)*(x)*(x))
-#define x4 ((x)*(x)*(x)*(x))
+#include "quadrature.h"
+
+/// equation -u'' + eps u = f(x)
+/// exact solution u(x) = x*(1-x) = x - x^2
+/// rhs 2 + eps (x - x^2)
 
 #define sqr(x) ((x) * (x))
 
 using namespace std;
 
 typedef float real_assemble;
-typedef float real_solve;
+typedef double real_solve;
 typedef float real_error;
 
 
-const real_assemble eps = 0;
+const real_assemble eps = 1;
 
 real_error exact(real_error x)
 {
@@ -33,30 +35,10 @@ real_error exact_der(real_error x)
    return 1 - 2 * x;
 }
 
-// used in assemble
-real_assemble primitive_left(real_assemble a, real_assemble x, real_assemble h)
+real_assemble rhs_val(real_assemble x)
 {
-   return (-eps/4 * x4 + eps*(a+1)/3 * x3 + (2-eps*a)/2 * x2 - 2*a*x)/h;
+   return (real_assemble(eps) * (x*(1-x))) + 2;
 }
-
-real_assemble primitive_right(real_assemble a, real_assemble x, real_assemble h)
-{
-   return (eps/4 * x4 - eps*(a+h+1)/3 * x3 + (eps*(a+h)-2)/2 * x2 + 2*(a+h)*x)/h;
-}
-
-real_assemble rhs_val(int idx, real_assemble h)
-{
-   real_assemble a = (idx+1) * h;
-   real_assemble ret = 0;
-   ret += primitive_left(a-h, a, h) - primitive_left(a-h, a-h, h);
-   ret += primitive_right(a, a+h, h) - primitive_right(a, a, h);
-   return ret;
-}
-
-// gauss quadrature is used in error calculation
-const int GAUSS_NP = 3;
-real_error weights[GAUSS_NP] = {5./9., 8./9., 5./9.};
-real_error gauss_points[GAUSS_NP] = {-sqrt(3./5.), 0, sqrt(3./5.)};
 
 
 void plot_error(int N, real_error* sol, ofstream &f_error)
@@ -89,24 +71,26 @@ void plot_error(int N, real_error* sol, ofstream &f_error)
    }
 }
 
-void add_error_contribution(real_error a, real_error b, real_error a_val, real_error b_val, real_error &l2, real_error &h1_semi, ofstream &f_error)
+void add_error_contribution(real_error a, real_error b, real_error a_val, real_error b_val, real_error &l2, real_error &h1_semi, ofstream &f_error, Quadrature<real_error> &quad)
 {
    real_error derivative = (b_val - a_val) / (b-a);
 
-   for (int quad_idx = 0; quad_idx < GAUSS_NP; quad_idx++)
+   for (int quad_idx = 0; quad_idx < quad.n_points; quad_idx++)
    {
-      real_error trans_pt = (b-a)/2 * gauss_points[quad_idx] + (a+b)/2;
-      real_error trans_val = (b_val-a_val)/2 * gauss_points[quad_idx] + (a_val+b_val)/2;
+      real_error trans_pt = (b-a)/2 * quad.points[quad_idx] + (a+b)/2;
+      real_error trans_val = (b_val-a_val)/2 * quad.points[quad_idx] + (a_val+b_val)/2;
 
-      l2 += (b-a)/2 * weights[quad_idx] * sqr(exact(trans_pt) - trans_val);
-      h1_semi += (b-a)/2 * weights[quad_idx] * sqr(exact_der(trans_pt) - derivative);
+      l2 += (b-a)/2 * quad.weights[quad_idx] * sqr(exact(trans_pt) - trans_val);
+      h1_semi += (b-a)/2 * quad.weights[quad_idx] * sqr(exact_der(trans_pt) - derivative);
 
-      //f_error << trans_pt << " " << exact(trans_pt) - trans_val << endl;
+//      f_error << trans_pt << " " << exact(trans_pt) - trans_val << endl;
    }
 }
 
 void calc_errors(int N, real_error* sol, real_error &error_l2, real_error &error_h1_semi)
 {
+   Quadrature<real_error> quad(3);
+
    string str_sol = "sol/solution-" + to_string(N) + ".txt";
    ofstream f_solution(str_sol);
    string str_err = "sol/error-" + to_string(N) + ".txt";
@@ -132,21 +116,22 @@ void calc_errors(int N, real_error* sol, real_error &error_l2, real_error &error
       else
          right_val = sol[interval_idx];
 
-      add_error_contribution(left_pt, right_pt, left_val, right_val, error_l2, error_h1_semi, f_error);
+      add_error_contribution(left_pt, right_pt, left_val, right_val, error_l2, error_h1_semi, f_error, quad);
    }
 
    error_l2 = sqrt(error_l2);
    error_h1_semi = sqrt(error_h1_semi);
 
 
-//   plot_error(N, sol, f_error);
-//   f_solution <<std::setprecision (std::numeric_limits<real_error>::digits10) << 0.0 << " " << 0.0 << endl;
-//   for(int i = 0; i < N; i++)
-//      f_solution << h*(i+1) << " " << sol[i] << endl;
-//   f_solution << 1.0 << " " << 0.0 << endl;
+   plot_error(N, sol, f_error);
+   f_solution <<std::setprecision (std::numeric_limits<real_error>::digits10) << 0.0 << " " << 0.0 << endl;
+   for(int i = 0; i < N; i++)
+      f_solution << h*(i+1) << " " << sol[i] << endl;
+   f_solution << 1.0 << " " << 0.0 << endl;
    f_solution.close();
    f_error.close();
 }
+
 
 void assemble(int N, real_assemble *diag, real_assemble *upper, real_assemble *lower, real_assemble* rhs)
 {
@@ -159,10 +144,13 @@ void assemble(int N, real_assemble *diag, real_assemble *upper, real_assemble *l
    real_assemble du_dv_same = 1./h;
    real_assemble du_dv_diff = -1./h;
 
-   //cout <<std::setprecision (std::numeric_limits<real_assemble>::digits10) << "h " << h << ", uv " << u_v_same << ", duv "<< du_dv_same << ", eps*uv + duv " << eps*u_v_same + du_dv_same << endl;
+   cout <<std::setprecision (std::numeric_limits<real_assemble>::digits10) << "h " << h << ", uv " << u_v_same << ", duv "<< du_dv_same << ", eps*uv + duv " << eps*u_v_same + du_dv_same << endl;
 
    for(int i = 0; i < N; i++)
+   {
       diag[i] = 2 * (eps * u_v_same + du_dv_same);
+      rhs[i] = 0.0;
+   }
 
    for(int i = 0; i < N - 1; i++)
    {
@@ -170,11 +158,33 @@ void assemble(int N, real_assemble *diag, real_assemble *upper, real_assemble *l
       lower[i] = eps * u_v_diff + du_dv_diff;
    }
 
-   for(int i = 0; i < N; i++)
+   Quadrature<real_assemble> quad(3);
+
+   for(int interval_idx = 0; interval_idx < intervals; interval_idx++)
    {
-      rhs[i] = rhs_val(i, h);
-      //cout << "rhs: " << rhs[i] << endl;
+      real_assemble a = interval_idx * h;
+      real_assemble b = (interval_idx + 1) * h;
+      for (int quad_idx = 0; quad_idx < quad.n_points; quad_idx++)
+      {
+         real_error trans_pt = (b-a)/2 * quad.points[quad_idx] + (a+b)/2;
+         real_error trans_val_left_basis = (0.-1.)/2 * quad.points[quad_idx] + (1.+0.)/2;
+         real_error trans_val_right_basis = (1.-0.)/2 * quad.points[quad_idx] + (0.+1.)/2;
+         if(interval_idx > 0)
+         {
+            rhs[interval_idx - 1] += (b-a)/2 * quad.weights[quad_idx] * trans_val_left_basis * rhs_val(trans_pt);
+         }
+         if(interval_idx < intervals - 1)
+         {
+            rhs[interval_idx] += (b-a)/2 * quad.weights[quad_idx] * trans_val_right_basis * rhs_val(trans_pt);
+         }
+      }
    }
+
+//   for(int i = 0; i < N; i++)
+//   {
+//      cout << "rhs " << rhs[i] << endl;
+//   }
+
 }
 
 
@@ -275,6 +285,6 @@ int main2()
 {
    //cout <<  std::numeric_limits<double>::digits10 << endl;
    real_error error_l2, error_h1_semi;
-   run(300, error_l2, error_h1_semi);
+   run(30, error_l2, error_h1_semi);
    return 0;
 }

@@ -27,7 +27,6 @@ double = np.loadtxt("f-d-d-eps0.txt")
 plot_graph(double, 1, "m-", "$\epsilon = 0$, f-d-d - l2")
 plot_graph(double, 2, "m--", "$\epsilon = 0$, f-d-d - h1 semi")
 
-
 plt.legend(loc=3)
 plt.xlabel("discretization step $h$")
 plt.grid()
