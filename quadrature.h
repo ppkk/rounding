@@ -2,6 +2,9 @@
 #define QUADRATURE_H
 
 
+/*
+ * Quadrature is a template, because I want to use it with different real type in assemble and in norm calculation
+ */
 template <typename R>
 class Quadrature
 {

@@ -9,6 +9,7 @@
 #include <typeinfo>
 
 #include "quadrature.h"
+#include "mesh.h"
 
 /// equation -u'' + eps u = f(x)
 /// exact solution u(x) = x*(1-x) = x - x^2
@@ -133,37 +134,52 @@ void calc_errors(int N, real_error* sol, real_error &error_l2, real_error &error
 }
 
 
-void assemble(int N, real_assemble *diag, real_assemble *upper, real_assemble *lower, real_assemble* rhs)
+void assemble(Mesh<real_assemble> &mesh, real_assemble *diag, real_assemble *upper, real_assemble *lower, real_assemble* rhs)
 {
+//   cout <<std::setprecision (std::numeric_limits<real_assemble>::digits10) << "h " << mesh.h << ", uv " << u_v_same << ", duv "<< du_dv_same << ", eps*uv + duv " << eps*u_v_same + du_dv_same << endl;
 
-   const int intervals = N+1;
-   const real_assemble h = 1./intervals;
-
-   real_assemble u_v_same = h/3.;
-   real_assemble u_v_diff = h/6.;
-   real_assemble du_dv_same = 1./h;
-   real_assemble du_dv_diff = -1./h;
-
-   cout <<std::setprecision (std::numeric_limits<real_assemble>::digits10) << "h " << h << ", uv " << u_v_same << ", duv "<< du_dv_same << ", eps*uv + duv " << eps*u_v_same + du_dv_same << endl;
-
-   for(int i = 0; i < N; i++)
+   for(int i = 0; i < mesh.N; i++)
    {
-      diag[i] = 2 * (eps * u_v_same + du_dv_same);
+      diag[i] = 0.0;
       rhs[i] = 0.0;
    }
 
-   for(int i = 0; i < N - 1; i++)
+   for(int i = 0; i < mesh.N - 1; i++)
    {
-      upper[i] = eps * u_v_diff + du_dv_diff;
-      lower[i] = eps * u_v_diff + du_dv_diff;
+      upper[i] = 0.0;
+      lower[i] = 0.0;
    }
 
    Quadrature<real_assemble> quad(3);
 
-   for(int interval_idx = 0; interval_idx < intervals; interval_idx++)
+   for(int interval_idx = 0; interval_idx < mesh.num_intervals; interval_idx++)
    {
-      real_assemble a = interval_idx * h;
-      real_assemble b = (interval_idx + 1) * h;
+      real_assemble a, b;
+      mesh.interval_endpoints(interval_idx, a, b);
+      real_assemble h = b - a;
+
+      real_assemble u_v_same = h/3.;
+      real_assemble u_v_diff = h/6.;
+      real_assemble du_dv_same = 1./h;
+      real_assemble du_dv_diff = -1./h;
+
+      real_assemble diag_contrib = eps * u_v_same + du_dv_same;
+      real_assemble offdiag_contrib = eps * u_v_diff + du_dv_diff;
+
+      if(interval_idx > 0)
+      {
+         diag[interval_idx - 1] += diag_contrib;
+      }
+      if(interval_idx < mesh.num_intervals - 1)
+      {
+         diag[interval_idx] += diag_contrib;
+      }
+      if((interval_idx > 0) && (interval_idx < mesh.num_intervals - 1))
+      {
+         upper[interval_idx - 1] += offdiag_contrib;
+         lower[interval_idx - 1] += offdiag_contrib;
+      }
+
       for (int quad_idx = 0; quad_idx < quad.n_points; quad_idx++)
       {
          real_error trans_pt = (b-a)/2 * quad.points[quad_idx] + (a+b)/2;
@@ -173,7 +189,7 @@ void assemble(int N, real_assemble *diag, real_assemble *upper, real_assemble *l
          {
             rhs[interval_idx - 1] += (b-a)/2 * quad.weights[quad_idx] * trans_val_left_basis * rhs_val(trans_pt);
          }
-         if(interval_idx < intervals - 1)
+         if(interval_idx < mesh.num_intervals - 1)
          {
             rhs[interval_idx] += (b-a)/2 * quad.weights[quad_idx] * trans_val_right_basis * rhs_val(trans_pt);
          }
@@ -223,7 +239,10 @@ void run(int N, real_error &error_l2, real_error &error_h1_semi)
    real_assemble* lower_assemble = new real_assemble[N - 1];
    real_assemble* rhs_assemble = new real_assemble[N];
 
-   assemble(N, diag_assemble, upper_assemble, lower_assemble, rhs_assemble);
+   Mesh<real_assemble> mesh_assemble;
+   mesh_assemble.create_uniform(N+1);
+
+   assemble(mesh_assemble, diag_assemble, upper_assemble, lower_assemble, rhs_assemble);
 
    real_solve* diag_solve = new real_solve[N];
    real_solve* rhs_solve = new real_solve[N];
@@ -247,6 +266,8 @@ void run(int N, real_error &error_l2, real_error &error_h1_semi)
 
    real_solve* sol_solve = new real_solve[N];
 
+   Mesh<real_solve> mesh_solve;
+   convert_mesh(mesh_assemble, mesh_solve);
    solve(N, diag_solve, upper_solve, lower_solve, rhs_solve, sol_solve);
 
    delete[] diag_solve;
@@ -283,8 +304,11 @@ int main()
 
 int main2()
 {
+   Mesh<real_assemble> mesh_assemble;
    //cout <<  std::numeric_limits<double>::digits10 << endl;
    real_error error_l2, error_h1_semi;
-   run(30, error_l2, error_h1_semi);
+   //run(30, error_l2, error_h1_semi);
+
+
    return 0;
 }
