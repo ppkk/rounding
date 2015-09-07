@@ -14,15 +14,13 @@ public:
    void interval_endpoints(int interval_idx, D &a, D &b);
 
    // as degrees of freedom: idx = 0 -> first internal point (not 0) is returned
-   D gridpoint(int internal_gridpoint_idx);
+   D gridpoint(int internal_gridpoint_idx) { return gridpoints[internal_gridpoint_idx];}
 
    int num_intervals;
    int N;
 
-public: //private:
+public: //private:  // TODO: how to make template function friend?
    void allocate(int num_intervals);
-
-private:
    D *gridpoints;
 };
 
@@ -125,6 +123,11 @@ void convert_mesh(const Mesh<D_in> &mesh_in, Mesh<D_out> &mesh_out)
    mesh_out.N = mesh_in.N;
    mesh_out.num_intervals = mesh_in.num_intervals;
    mesh_out.allocate(mesh_in.num_intervals);
+
+   for(int i = 0; i < mesh_out.N; i++)
+   {
+      mesh_out.gridpoints[i] = (D_out)mesh_in.gridpoints[i];
+   }
 }
 
 

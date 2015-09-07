@@ -88,31 +88,28 @@ void add_error_contribution(real_error a, real_error b, real_error a_val, real_e
    }
 }
 
-void calc_errors(int N, real_error* sol, real_error &error_l2, real_error &error_h1_semi)
+void calc_errors(Mesh<real_error> &mesh, real_error* sol, real_error &error_l2, real_error &error_h1_semi)
 {
    Quadrature<real_error> quad(3);
 
-   string str_sol = "sol/solution-" + to_string(N) + ".txt";
+   string str_sol = "sol/solution-" + to_string(mesh.N) + ".txt";
    ofstream f_solution(str_sol);
-   string str_err = "sol/error-" + to_string(N) + ".txt";
+   string str_err = "sol/error-" + to_string(mesh.N) + ".txt";
    ofstream f_error(str_err);
-   const int intervals = N+1;
-   const real_error h = 1./intervals;
 
    error_l2 = 0.0;
    error_h1_semi = 0.0;
 
    real_error left_pt, right_pt, left_val, right_val;
-   for(int interval_idx = 0; interval_idx < intervals; interval_idx++)
+   for(int interval_idx = 0; interval_idx < mesh.num_intervals; interval_idx++)
    {
-      left_pt = h*interval_idx;
-      right_pt = h*(interval_idx+1);
+      mesh.interval_endpoints(interval_idx, left_pt, right_pt);
 
       if(interval_idx == 0)
          left_val = 0.;
       else
          left_val = sol[interval_idx - 1];
-      if(interval_idx == intervals - 1)
+      if(interval_idx == mesh.num_intervals - 1)
          right_val = 0.;
       else
          right_val = sol[interval_idx];
@@ -124,10 +121,10 @@ void calc_errors(int N, real_error* sol, real_error &error_l2, real_error &error
    error_h1_semi = sqrt(error_h1_semi);
 
 
-   plot_error(N, sol, f_error);
+   plot_error(mesh.N, sol, f_error);
    f_solution <<std::setprecision (std::numeric_limits<real_error>::digits10) << 0.0 << " " << 0.0 << endl;
-   for(int i = 0; i < N; i++)
-      f_solution << h*(i+1) << " " << sol[i] << endl;
+   for(int i = 0; i < mesh.N; i++)
+      f_solution << mesh.gridpoint(i) << " " << sol[i] << endl;
    f_solution << 1.0 << " " << 0.0 << endl;
    f_solution.close();
    f_error.close();
@@ -266,8 +263,6 @@ void run(int N, real_error &error_l2, real_error &error_h1_semi)
 
    real_solve* sol_solve = new real_solve[N];
 
-   Mesh<real_solve> mesh_solve;
-   convert_mesh(mesh_assemble, mesh_solve);
    solve(N, diag_solve, upper_solve, lower_solve, rhs_solve, sol_solve);
 
    delete[] diag_solve;
@@ -282,7 +277,9 @@ void run(int N, real_error &error_l2, real_error &error_h1_semi)
    }
    delete[] sol_solve;
 
-   calc_errors(N, sol_error, error_l2, error_h1_semi);
+   Mesh<real_error> mesh_error;
+   convert_mesh(mesh_assemble, mesh_error);
+   calc_errors(mesh_error, sol_error, error_l2, error_h1_semi);
 
    delete[] sol_error;
 }
